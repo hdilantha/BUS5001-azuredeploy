@@ -1,0 +1,171 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {},
+    "variables": { 
+        
+        "UniqueSuffix":"[toLower(uniqueString(resourceGroup().id))]",
+        
+        "DataStorageName":"[concat('datastorage', substring(variables('UniqueSuffix'),0,5))]",
+
+        "DataFactoryName": "[concat('DataFactory-',substring(variables('UniqueSuffix'),0,5))]",
+
+        "ComputerVisionName":"ComputerVision",
+        "ComputerVisionSKU": "S1",
+
+        "CosmosDBAccountName": "[concat('cosmosdb-', substring(variables('UniqueSuffix'),0,5))]",
+
+		"FunctionAppStorageAccountName": "[concat('functionapp', substring(variables('UniqueSuffix'), 0, 5))]",
+        "FunctionAppServicePlanName": "[concat('functionappplan', substring(variables('UniqueSuffix'), 0, 5))]",
+        "FunctionAppName": "[concat('functionapp', substring(variables('UniqueSuffix'), 0, 5))]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Storage/storageAccounts",
+            "sku": {
+                "name": "Standard_RAGRS",
+                "tier": "Standard"
+            },
+            "kind": "StorageV2",
+            "name": "[variables('DataStorageName')]",
+            "apiVersion": "2019-06-01",
+            "location": "[resourceGroup().location]",
+            "tags": {},
+            "scale": null,
+            "properties": {
+                "isHnsEnabled": false,
+                "networkAcls": {
+                    "bypass": "AzureServices",
+                    "virtualNetworkRules": [],
+                    "ipRules": [],
+                    "defaultAction": "Allow"
+                },
+                "supportsHttpsTrafficOnly": true,
+                "encryption": {
+                    "services": {
+                        "file": {
+                            "enabled": true
+                        },
+                        "blob": {
+                            "enabled": true
+                        }
+                    },
+                    "keySource": "Microsoft.Storage"
+                },
+                "accessTier": "Hot"
+            },
+            "dependsOn": []
+        },
+        {
+            "apiVersion": "2018-06-01",
+            "name": "[variables('DataFactoryName')]",
+            "location": "[resourceGroup().location]",
+            "type": "Microsoft.DataFactory/factories",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "properties": {}
+        },
+        {
+            "type": "Microsoft.CognitiveServices/accounts",
+            "sku": {
+                "name": "[variables('ComputerVisionSKU')]"
+            },
+            "kind": "ComputerVision",
+            "name": "[variables('ComputerVisionName')]",
+            "apiVersion": "2016-02-01-preview",
+            "location": "[resourceGroup().location]",
+            "scale": null,
+            "properties": {},
+            "dependsOn": []
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts",
+            "kind": "GlobalDocumentDB",
+            "name": "[variables('CosmosDBAccountName')]",
+            "apiVersion": "2015-04-08",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "defaultExperience": "Core (SQL)"
+            },
+            "scale": null,
+            "properties": {
+                "ipRangeFilter": "",
+                "enableAutomaticFailover": false,
+                "enableMultipleWriteLocations": true,
+                "isVirtualNetworkFilterEnabled": false,
+                "virtualNetworkRules": [],
+                "databaseAccountOfferType": "Standard",
+                "consistencyPolicy": {
+                    "defaultConsistencyLevel": "Session",
+                    "maxIntervalInSeconds": 5,
+                    "maxStalenessPrefix": 100
+                },
+                "locations": [
+                    {
+                        "locationName": "[resourceGroup().location]",
+                        "provisioningState": "Succeeded",
+                        "failoverPriority": 0
+                    }
+                ],
+                "capabilities": []
+            },
+            "dependsOn": []
+        },
+		{
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "2019-06-01",
+            "name": "[variables('FunctionAppStorageAccountName')]",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Standard_LRS"
+            },
+            "kind": "StorageV2",
+            "properties": {
+                "supportsHttpsTrafficOnly": true
+            }
+        },
+        {
+            "type": "Microsoft.Web/serverfarms",
+            "apiVersion": "2020-06-01",
+            "name": "[variables('FunctionAppServicePlanName')]",
+            "location": "[resourceGroup().location]",
+            "kind": "functionapp",
+            "sku": {
+                "name": "Y1",
+                "tier": "Dynamic"
+            },
+            "properties": {}
+        },
+        {
+            "type": "Microsoft.Web/sites",
+            "apiVersion": "2020-06-01",
+            "name": "[variables('FunctionAppName')]",
+            "location": "[resourceGroup().location]",
+            "kind": "functionapp",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', variables('FunctionAppServicePlanName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('FunctionAppStorageAccountName'))]"
+            ],
+            "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('FunctionAppServicePlanName'))]",
+                "siteConfig": {
+                    "appSettings": [
+                        {
+                            "name": "AzureWebJobsStorage",
+                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('FunctionAppStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('FunctionAppStorageAccountName')), '2019-06-01').keys[0].value)]"
+                        },
+                        {
+                            "name": "FUNCTIONS_EXTENSION_VERSION",
+                            "value": "~4"
+                        },
+                        {
+                            "name": "WEBSITE_RUN_FROM_PACKAGE",
+                            "value": "1"
+                        }
+                    ]
+                }
+            }
+        }
+    ]
+}
